@@ -11,5 +11,7 @@ dependencies:
   - openpyxl
   - python-dateutil
   - pynwb
+  - jupyterlab
+  - pyqt
   - pip:
       - pyabf
