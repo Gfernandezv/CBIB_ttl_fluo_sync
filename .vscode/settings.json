@@ -1,0 +1,10 @@
+{
+    "python-envs.defaultEnvManager": "ms-python.python:conda",
+    "python-envs.defaultPackageManager": "ms-python.python:conda",
+    "python.defaultInterpreterPath": "/Users/gfernandezv/miniconda3/envs/ttl_imagej/bin/python",
+    "python.terminal.activateEnvironment": true,
+    "terminal.integrated.env.osx": {
+        "MPLCONFIGDIR": "${workspaceFolder}/.matplotlib",
+        "XDG_CACHE_HOME": "${workspaceFolder}/.cache"
+    }
+}

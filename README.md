@@ -125,6 +125,39 @@ The notebook generates:
 - low vs high response scatter plots, colored by sample and shaped by trend;
 - ratio summary CSV files and exported figures.
 
+### 4. Fine-Grained ROI Metrics
+
+Script:
+
+```text
+scripts/fine_analysis.py
+```
+
+This optional step builds a more detailed ROI profile from
+`data/Proc_data/batch_analysis/processing_active.csv`:
+
+- response curves in small temperature bins;
+- ROI-level curve metrics such as signal range, slope, AUC, max/min response
+  temperature, high-vs-low temperature delta, and threshold-crossing temperature;
+- conservative QC flags;
+- sample/genotype summaries.
+
+Run it from the project root:
+
+```bash
+python scripts/fine_analysis.py
+```
+
+It exports:
+
+```text
+data/Proc_data/batch_analysis/fine_analysis/
+├── filtered_points_used.csv
+├── roi_temperature_bins.csv
+├── roi_curve_metrics.csv
+└── roi_curve_metrics_by_group.csv
+```
+
 ## Main Outputs
 
 Important files produced under:
