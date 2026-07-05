@@ -510,7 +510,7 @@ def detect_roi_signal_outliers(
     - abs(residual) >= min_abs_residual
 
     No elimina datos: devuelve una copia con columnas nuevas:
-    - trend
+    - local_trend
     - residual
     - robust_z
     - is_outlier
@@ -526,7 +526,7 @@ def detect_roi_signal_outliers(
         raise ValueError(f"Faltan columnas en df: {sorted(missing)}")
 
     result = df.copy()
-    result["trend"] = np.nan
+    result["local_trend"] = np.nan
     result["residual"] = np.nan
     result["robust_z"] = np.nan
     result["is_outlier"] = False
@@ -558,7 +558,7 @@ def detect_roi_signal_outliers(
             residual.abs().ge(min_abs_residual)
         )
 
-        result.loc[sub.index, "trend"] = trend.values
+        result.loc[sub.index, "local_trend"] = trend.values
         result.loc[sub.index, "residual"] = residual.values
         result.loc[sub.index, "robust_z"] = robust_z.values
         result.loc[sub.index, "is_outlier"] = is_outlier.values
@@ -597,9 +597,9 @@ def graph_roi_outlier_detection(
             label="outlier"
         )
 
-    if "trend" in sub.columns and x_col == "TTL_index":
+    if "local_trend" in sub.columns and x_col == "TTL_index":
         ordered = sub.sort_values("TTL_index")
-        plt.plot(ordered[x_col], ordered["trend"], color="black", linewidth=1.5, label="tendencia")
+        plt.plot(ordered[x_col], ordered["local_trend"], color="black", linewidth=1.5, label="tendencia")
 
     plt.xlabel(x_col)
     plt.ylabel(value_col)
@@ -931,6 +931,7 @@ def process_sample(
     ttl_channel=1,
     drop_frames_without_ttl=True,
     phase_filter=None,
+    temp_range=None,
 ):
     """
     Procesa una muestra de imagen + ABF manteniendo la alineación frame-TTL.
@@ -955,6 +956,12 @@ def process_sample(
     con los puntos de esa fase. Por lo tanto, I_baseline, Imax, T_at_Imax y
     NormSignal describen el subconjunto filtrado, no el registro completo.
 
+    Si temp_range=(t_min, t_max), la normalización se calcula solo con puntos
+    cuya temp_mean cae dentro de ese rango (se aplica después de phase_filter).
+    Esto evita que Imax quede definido por temperaturas fuera del rango que
+    después se usa en analyze_temp_trends / temp_ranges. target_temp debe caer
+    dentro de temp_range, o I_baseline quedará sin datos.
+
     Para excluir segmentos no deseados del análisis, filtra después de procesar:
 
         df_phase_clean = df_phase[df_phase["TTL_index"] >= 11].copy()
@@ -976,13 +983,18 @@ def process_sample(
         Diccionario con los datos intermedios y finales:
         - df_long: formato largo antes de clasificar fase.
         - df_long_phase: formato largo con dT y phase.
-        - df_for_norm: datos usados para normalizar después de phase_filter.
+        - df_for_norm: datos usados para normalizar después de phase_filter y temp_range.
         - df_norm / df_phase: datos normalizados, conservando phase.
         - heating_df / cooling_df: subconjuntos normalizados por fase.
         - frame_counts: resumen de frames/TTL usados.
     """
     if phase_filter not in {None, "cooling", "heating"}:
         raise ValueError("phase_filter debe ser None, 'cooling' o 'heating'.")
+
+    if temp_range is not None:
+        t_min, t_max = temp_range
+        if t_min >= t_max:
+            raise ValueError("temp_range debe ser (t_min, t_max) con t_min < t_max.")
 
     files = find_files(input_dir)
     roi_csv = pd.read_csv(files["roi_csv"])
@@ -1025,6 +1037,19 @@ def process_sample(
     else:
         df_for_norm = df_long_phase[df_long_phase["phase"] == phase_filter].copy()
 
+    frames_after_phase_filter = df_for_norm["frame"].nunique()
+
+    if temp_range is not None:
+        t_min, t_max = temp_range
+        df_for_norm = df_for_norm[
+            (df_for_norm["temp_mean"] >= t_min) & (df_for_norm["temp_mean"] <= t_max)
+        ].copy()
+        if df_for_norm["frame"].nunique() == 0:
+            raise ValueError(
+                f"temp_range={temp_range} no dejó ningún frame "
+                f"(había {frames_after_phase_filter} antes del filtro)."
+            )
+
     df_norm = Normalization(
         df_for_norm,
         norm_type=norm_type,
@@ -1047,11 +1072,13 @@ def process_sample(
         "heating_df": df_phase[df_phase["phase"] == "heating"].copy(),
         "cooling_df": df_phase[df_phase["phase"] == "cooling"].copy(),
         "phase_filter": phase_filter,
+        "temp_range": temp_range,
         "frame_counts": {
             "frames_csv_total": frames_csv_total,
             "frames_with_ttl": frames_with_ttl,
             "frames_without_ttl": frames_without_ttl,
-            "frames_after_phase_filter": df_for_norm["frame"].nunique(),
+            "frames_after_phase_filter": frames_after_phase_filter,
+            "frames_after_temp_range": df_for_norm["frame"].nunique(),
             "assigned_ttl_first": assigned_ttl_first,
             "assigned_ttl_last": assigned_ttl_last,
             "detected_ttl_first": int(temp_ttl_df.index.min()),
@@ -1065,6 +1092,7 @@ def process_sample(
     print(f"  frames con TTL asociado: {frames_with_ttl}")
     print(f"  frames sin TTL asociado: {frames_without_ttl}")
     print(f"  filtro de fase previo a normalizar: {phase_filter or 'ninguno'}")
+    print(f"  filtro de rango de temperatura previo a normalizar: {temp_range or 'ninguno'}")
     print(f"  frames usados para normalizar: {df_for_norm['frame'].nunique()}")
     print(f"  TTL_index asignados a frames: {assigned_ttl_first} a {assigned_ttl_last}")
     print(f"  TTL_index detectados: {temp_ttl_df.index.min()} a {temp_ttl_df.index.max()}")
@@ -1566,6 +1594,82 @@ def exclude_rois(
     return marked[marked["ROI_status"] == 1].drop(columns=["ROI_status"]).copy()
 
 
+def apply_manual_roi_exclusion(
+    targets,
+    roi_invalid=None,
+    scoped_invalid=None,
+    roi_col="ROI",
+    status_col="ROI_status",
+    save=True,
+):
+    """
+    Marca ROI como inválidas tras la inspección visual final de los gráficos
+    (por ejemplo después de graph_selected_rois_by_phase) y deja ROI_status
+    consistente en todos los archivos relacionados con la muestra.
+
+    targets acepta un DataFrame, una ruta a CSV (str/Path), o una lista con
+    cualquier combinación de ambos. Pensado para aplicarse sobre los tres
+    archivos de una misma muestra a la vez (processed, filtered,
+    preprocessed_long), de modo que los tres reflejen el mismo estatus final.
+
+    Si un archivo ya trae ROI_status de un filtro previo (por ejemplo
+    analyze_temp_trends), esas marcas se conservan: este filtro solo agrega
+    exclusiones nuevas, nunca revierte una ROI ya marcada como inválida.
+
+    Si target es una ruta y save=True, el archivo se sobreescribe con el
+    ROI_status actualizado.
+
+    Parameters
+    ----------
+    targets : DataFrame, str, Path o lista de estos
+        Datos a actualizar. Ver descripción arriba.
+    roi_invalid : list o str, optional
+        ROI a invalidar en todos los targets, por ejemplo ["ROI7", "ROI10"].
+    scoped_invalid : list of dict, optional
+        Igual que scoped_exclude en mark_roi_status: permite invalidar una
+        ROI solo dentro de una muestra/carpeta específica, por ejemplo
+        [{"source_file": "sample_07_WT_processed.csv", "ROI": "ROI3"}].
+    roi_col, status_col : str
+        Nombres de columnas de ROI y de estatus.
+    save : bool
+        Si True, sobreescribe en disco los targets que sean rutas.
+
+    Returns
+    -------
+    pandas.DataFrame o list
+        DataFrame actualizado si targets tenía un solo elemento, o lista de
+        DataFrames en el mismo orden si targets tenía varios.
+    """
+    if isinstance(targets, (str, Path, pd.DataFrame)):
+        targets = [targets]
+
+    updated = []
+    for target in targets:
+        source_path = None
+        if isinstance(target, (str, Path)):
+            source_path = Path(target)
+            df = pd.read_csv(source_path)
+        else:
+            df = target.copy()
+
+        df = mark_roi_status(
+            df,
+            roi_exclude=roi_invalid,
+            roi_col=roi_col,
+            scoped_exclude=scoped_invalid,
+            status_col=status_col,
+            preserve_existing=True,
+        )
+
+        if source_path is not None and save:
+            df.to_csv(source_path, index=False)
+            print(f"ROI_status actualizado y guardado: {source_path}")
+
+        updated.append(df)
+
+    return updated[0] if len(updated) == 1 else updated
+
+
 def summarize_grouped_temp_trends(
     df,
     group_cols=("source_folder", "source_file", "sample", "genotype", "genotype_meta", "nickname_meta"),
@@ -1688,7 +1792,7 @@ def attach_roi_summary_to_long_df(
     ]
     summary_unique = roi_summary[summary_cols].drop_duplicates(subset=id_cols)
 
-    out = long_df.drop(columns=[status_col], errors="ignore").merge(
+    out = long_df.merge(
         summary_unique,
         on=id_cols,
         how="left",
@@ -1710,6 +1814,7 @@ def preprocess_long_for_batch(
     min_abs_delta=0.01,
     min_points=3,
     roi_summary=None,
+    norm_temp_range=None,
 ):
     """
     Construye el CSV largo enriquecido usado como preprocesamiento batch.
@@ -1717,7 +1822,20 @@ def preprocess_long_for_batch(
     El resultado conserva una fila por ROI/frame/TTL e incluye:
     - phase y dT
     - trend y métricas por rango de temperatura
-    - ROI_status por defecto en 1
+    - ROI_status: conserva el valor que ya traiga df_phase (por ejemplo de
+      apply_manual_roi_exclusion) y solo usa 1 por defecto donde no haya nada.
+    - temp_range_<nombre>_min / temp_range_<nombre>_max: metadata (mismo valor
+      repetido en toda la muestra) que registra qué temp_ranges se usó
+      efectivamente para calcular trend/delta_high_low, para poder detectar en
+      02_processing.ipynb si dos muestras se preprocesaron con rangos distintos.
+    - norm_temp_range_min / norm_temp_range_max: metadata que registra el
+      temp_range (ventana de corte antes de normalizar) con el que se llamó
+      process_sample() para esta muestra. Es distinto de temp_ranges
+      (low/mid/high, usado para clasificar trend): temp_range acota qué
+      puntos entran a Normalization() y por lo tanto qué I_baseline/Imax se
+      calculan. Si norm_temp_range es None (no se usó ventana de corte), estas
+      columnas quedan en NaN, para poder distinguir "no se usó ventana" de
+      "CSV generado antes de este registro" (columnas ausentes).
     """
     long_df = df_phase.copy()
     if sample is not None and "sample" not in long_df.columns:
@@ -1734,22 +1852,37 @@ def preprocess_long_for_batch(
             raise ValueError("df_phase debe contener 'phase' para filtrar por fase.")
         analysis_df = analysis_df[analysis_df["phase"] == phase].copy()
 
+    temp_ranges_used = temp_ranges if temp_ranges is not None else {
+        "low": (22, 28),
+        "mid": (32, 35),
+        "high": (36, 42),
+    }
+
     if roi_summary is None:
         trend_results = analyze_temp_trends(
             analysis_df,
             phase=None,
-            temp_ranges=temp_ranges,
+            temp_ranges=temp_ranges_used,
             value_col=value_col,
             min_abs_delta=min_abs_delta,
             min_points=min_points,
         )
         roi_summary = trend_results["roi_summary"]
 
-    return attach_roi_summary_to_long_df(
+    result = attach_roi_summary_to_long_df(
         analysis_df,
         roi_summary,
         id_cols=["ROI"],
     )
+
+    for name, (t_min, t_max) in temp_ranges_used.items():
+        result[f"temp_range_{name}_min"] = t_min
+        result[f"temp_range_{name}_max"] = t_max
+
+    result["norm_temp_range_min"] = norm_temp_range[0] if norm_temp_range is not None else np.nan
+    result["norm_temp_range_max"] = norm_temp_range[1] if norm_temp_range is not None else np.nan
+
+    return result
 
 
 def export_preprocessed_long(
@@ -1764,9 +1897,14 @@ def export_preprocessed_long(
     min_points=3,
     roi_summary=None,
     filename=None,
+    norm_temp_range=None,
 ):
     """
     Exporta un CSV largo enriquecido para análisis batch.
+
+    norm_temp_range debe ser el mismo temp_range (t_min, t_max) con el que se
+    llamó process_sample() para esta muestra, para que quede registrado en el
+    CSV exportado (ver docstring de preprocess_long_for_batch).
     """
     export_df = preprocess_long_for_batch(
         df_phase,
@@ -1778,6 +1916,7 @@ def export_preprocessed_long(
         min_abs_delta=min_abs_delta,
         min_points=min_points,
         roi_summary=roi_summary,
+        norm_temp_range=norm_temp_range,
     )
 
     output_dir = Path(output_dir)

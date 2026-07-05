@@ -207,13 +207,18 @@ def summarize_roi_temperature_table(
             "nickname_meta",
         ]
 
+    temp_range_cols = [
+        col for col in df.columns
+        if col.startswith("temp_range_") or col.startswith("norm_temp_range_")
+    ]
+
     summary_cols = list(group_cols) + [
         "ROI",
         "low_mean", "low_sd", "low_n",
         "mid_mean", "mid_sd", "mid_n",
         "high_mean", "high_sd", "high_n",
         "delta_high_low", "trend", status_col,
-    ]
+    ] + temp_range_cols
     summary_cols = [col for col in summary_cols if col in df.columns]
 
     missing_ids = set(id_cols) - set(df.columns)
