@@ -1101,6 +1101,46 @@ def process_sample(
     print("  fases:")
     print(df_phase[["TTL_index", "phase"]].drop_duplicates()["phase"].value_counts())
 
+    # Añadir información temporal: tiempo total y tiempo entre frames
+    total_time = None
+    try:
+        total_time = data.get("metadata", {}).get("duration_sec", None)
+    except Exception:
+        total_time = None
+
+    if total_time is None or (isinstance(total_time, float) and np.isnan(total_time)):
+        try:
+            times = np.asarray(data.get("time", []), dtype=float)
+            if times.size:
+                total_time = float(np.nanmax(times) - np.nanmin(times))
+            else:
+                total_time = float('nan')
+        except Exception:
+            total_time = float('nan')
+
+    # tiempo entre frames: diferencias de onset_time en temp_ttl_df
+    frame_intervals = np.array([])
+    try:
+        if "onset_time" in temp_ttl_df.columns and temp_ttl_df["onset_time"].notna().sum() > 1:
+            frame_intervals = np.diff(temp_ttl_df["onset_time"].values.astype(float))
+    except Exception:
+        frame_intervals = np.array([])
+
+    # imprimir resultados
+    try:
+        if np.isfinite(total_time):
+            print(f"  tiempo total (s): {total_time:.2f}")
+        else:
+            print("  tiempo total (s): N/A")
+
+        if frame_intervals.size > 0:
+            print(f"  tiempo entre frames (mediana, s): {float(np.nanmedian(frame_intervals)):.4f}")
+            print(f"  tiempo entre frames (media, s): {float(np.nanmean(frame_intervals)):.4f}")
+        else:
+            print("  tiempo entre frames: N/A")
+    except Exception:
+        pass
+
     return outputs
 
 
