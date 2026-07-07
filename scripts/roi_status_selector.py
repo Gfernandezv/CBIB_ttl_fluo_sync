@@ -16,6 +16,12 @@ def apply_roi_status(
 ):
     """
     Propaga ROI_status desde una tabla resumen hacia otra tabla por id_cols.
+
+    Si un ROI de df no existe todavía en status_df (por ejemplo porque aún no
+    pasó por el selector interactivo de 02_processing.ipynb), se conserva el
+    ROI_status que ya traía df (p.ej. una exclusión manual hecha en
+    01_preprocessing.ipynb) en vez de forzarlo a 1, para no revertir
+    silenciosamente decisiones previas.
     """
     missing_df = set(id_cols) - set(df.columns)
     missing_status = set(id_cols + [status_col]) - set(status_df.columns)
@@ -25,11 +31,15 @@ def apply_roi_status(
         raise ValueError(f"Faltan columnas en status_df: {sorted(missing_status)}")
 
     status_map = status_df[id_cols + [status_col]].drop_duplicates(subset=id_cols)
+    existing_status = df[status_col] if status_col in df.columns else None
+
     out = df.drop(columns=[status_col], errors="ignore").merge(
         status_map,
         on=id_cols,
         how="left",
     )
+    if existing_status is not None:
+        out[status_col] = out[status_col].fillna(existing_status.reset_index(drop=True))
     out[status_col] = out[status_col].fillna(1).astype(int)
     return out
 
