@@ -10,11 +10,10 @@ Analysis workflow for TRPM3 fluorescence imaging synchronized with TTL and tempe
 ├── notebooks/
 │   ├── 01_preprocessing.ipynb
 │   ├── 02_processing.ipynb
-│   └── 03_graphs.ipynb
+│   └── 03_analysis.ipynb
 ├── scripts/
 │   ├── analisis_ttl.py
-│   ├── roi_status_selector.py
-│   └── graphs.py
+│   └── roi_status_selector.py
 ├── data/              # local data, not tracked by git
 ├── graphs/            # optional exported figures
 └── processed/         # local intermediate outputs, not tracked by git
@@ -100,30 +99,21 @@ data/Proc_data/batch_analysis/roi_temp_summary_active.csv
 
 This is the main output for downstream plotting and analysis.
 
-### 3. Graphs
+### 3. Analysis
 
 Notebook:
 
 ```text
-notebooks/03_graphs.ipynb
+notebooks/03_analysis.ipynb
 ```
 
 This step:
 
-- loads `roi_temp_summary_active.csv`;
-- computes the high/low response ratio as:
-
-```text
-(1 + high_mean) / (1 + low_mean)
-```
-
-Because `low_mean` and `high_mean` are normalized fluorescence signals (`DeltaF/F0`), this ratio compares estimated `F/F0` between high and low temperature ranges.
-
-The notebook generates:
-
-- boxplots of high/low ratio by trend, one figure per genotype;
-- low vs high response scatter plots, colored by sample and shaped by trend;
-- ratio summary CSV files and exported figures.
+- compiles every `*_preprocessed_long.csv` under `data/Proc_data/` via `ttl.load_all_preprocessed_long` (no external Excel needed);
+- keeps only ROIs already marked as included (`ROI_status == 1`);
+- filters by `phase`, `trend`, genotype, and temperature range (parameters at the top of the notebook);
+- bins `NormSignal` by temperature per ROI, then summarizes mean ± SEM per genotype;
+- plots per-ROI fine curves plus the genotype-level mean curve across temperature.
 
 ## Main Outputs
 

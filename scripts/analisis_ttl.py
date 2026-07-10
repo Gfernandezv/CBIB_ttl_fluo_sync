@@ -5,6 +5,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import glob
+import fnmatch
 from pathlib import Path
 
 
@@ -430,6 +431,211 @@ def graph_rois_before_filter(df_phase, phase=None, value_col="NormSignal", alpha
 
     print(f"ROIs graficadas antes del filtro: {plot_df['ROI'].nunique()}")
     print(f"Filas graficadas: {len(plot_df)}")
+
+    return plot_df
+
+
+def selected_rois_from_long(
+    df,
+    folder,
+    folder_col="source_folder",
+    status_col="ROI_status",
+    included_status=1,
+):
+    """
+    Devuelve la lista de ROI con status_col == included_status para una
+    carpeta/muestra, leyendo directamente el ROI_status ya fijado en el
+    *_preprocessed_long.csv (compilado en preprocessed_all).
+
+    Pensado como alternativa a curar la lista a mano o vía recortes de
+    imagen: si ROI_status ya refleja la decisión final de
+    01_preprocessing.ipynb, esta función la reutiliza tal cual, por ejemplo
+    para alimentar selected_rois en process_sample() o para graficar.
+
+    folder acepta patrones estilo shell (fnmatch), ej. 'mut27_*' junta
+    'mut27_image10' y 'mut27_image11'. OJO: el nombre de ROI se repite entre
+    muestras, así que la lista resultante mezcla ROI de distintas carpetas
+    bajo el mismo nombre — sirve para inspección/graficado, pero no como
+    selected_rois de un único process_sample() (que opera sobre una sola
+    carpeta/archivo crudo).
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Tabla larga con folder_col, ROI y status_col (ej. preprocessed_all).
+    folder : str
+        Valor (o patrón fnmatch) de folder_col a consultar, ej.
+        'mut45_image13' o 'mut27_*'.
+    folder_col : str
+        Columna que identifica la carpeta/muestra de origen.
+    status_col : str
+        Columna de estatus de inclusión.
+    included_status : int
+        Valor de status_col que indica ROI incluida (por defecto 1).
+
+    Returns
+    -------
+    list of str
+        ROI incluidas, ordenadas numéricamente, ej. ['ROI2', 'ROI8', 'ROI10'].
+    """
+    required_cols = {folder_col, "ROI", status_col}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(f"Faltan columnas en df: {sorted(missing)}")
+
+    folder_mask = df[folder_col].astype(str).apply(lambda v: fnmatch.fnmatch(v, folder))
+    matched_folders = sorted(df.loc[folder_mask, folder_col].dropna().unique())
+    if len(matched_folders) > 1:
+        print(
+            f"'{folder}' coincide con {len(matched_folders)} carpetas: {matched_folders}. "
+            "La lista de ROI resultante mezcla nombres repetidos entre muestras."
+        )
+
+    subset = df[folder_mask & (df[status_col] == included_status)]
+    rois = subset["ROI"].dropna().astype(str).unique().tolist()
+    rois.sort(key=lambda roi: int("".join(ch for ch in roi if ch.isdigit()) or 0))
+
+    print(f"{folder}: {len(rois)} ROIs con {status_col}={included_status}")
+    return rois
+
+
+def graph_selected_rois_by_folder(
+    df,
+    folder=None,
+    rois=None,
+    folder_col="source_folder",
+    status_col="ROI_status",
+    included_status=1,
+    value_col="NormSignal",
+    x_col="temp_mean",
+    alpha=0.8,
+    show_mean_se=False,
+    n_bins=20,
+):
+    """
+    Grafica value_col vs x_col para un conjunto de ROI de una o varias muestras.
+
+    Acepta dos fuentes de datos:
+
+    - preprocessed_all (el compilado de todos los *_preprocessed_long.csv en
+      02_processing.ipynb): pasa folder para filtrar por folder_col, y las
+      ROI se seleccionan por status_col == included_status (o por rois, si
+      se entrega explícitamente). folder acepta patrones fnmatch, ej.
+      'mut27_*' junta 'mut27_image10' y 'mut27_image11'. Como el nombre de
+      ROI se repite entre muestras, si el patrón matchea más de una carpeta
+      cada línea se etiqueta "folder:ROI" en vez de solo "ROI".
+    - processed["df_phase"] (la salida de ttl.process_sample()/reprocesos
+      con selected_rois): no tiene folder_col ni hace falta filtrar por
+      status_col, ya viene restringido a las ROI reprocesadas. En ese caso
+      no pases folder (o pasa folder solo para el título del gráfico).
+
+    Parameters
+    ----------
+    df : pandas.DataFrame
+        Tabla larga con ROI, x_col, value_col (y folder_col/status_col si
+        corresponde filtrar por ellos).
+    folder : str, optional
+        Valor de folder_col a graficar, ej. 'mut45_image13'. Si df no tiene
+        folder_col (ej. viene de process_sample()), se usa solo para el
+        título del gráfico.
+    rois : list of str, optional
+        Si se entrega, grafica exactamente estas ROI (ignora status_col).
+        Útil para graficar selected_rois directamente, sin depender de que
+        df tenga status_col.
+    folder_col : str
+        Columna que identifica la carpeta/muestra de origen, si existe en df.
+    status_col : str
+        Columna de estatus de inclusión, usada solo si rois es None y
+        status_col existe en df.
+    included_status : int
+        Valor de status_col que indica ROI incluida (por defecto 1).
+    value_col : str
+        Columna a graficar en el eje Y (por defecto 'NormSignal').
+    x_col : str
+        Columna a graficar en el eje X (por defecto 'temp_mean').
+    alpha : float
+        Transparencia de cada línea de ROI.
+    show_mean_se : bool
+        Si True, agrega una curva de media ± SEM sobre las ROI graficadas
+        (todas juntas, sin distinguir folder/ROI), calculada agrupando x_col
+        en n_bins intervalos. Útil para ver la tendencia general en un batch
+        de varias muestras (folder con patrón) sin leer línea por línea.
+    n_bins : int
+        Número de intervalos de x_col usados para la media ± SEM, si
+        show_mean_se=True.
+
+    Returns
+    -------
+    pandas.DataFrame
+        Subconjunto graficado.
+    """
+    required_cols = {"ROI", x_col, value_col}
+    missing = required_cols - set(df.columns)
+    if missing:
+        raise ValueError(f"Faltan columnas en df: {sorted(missing)}")
+
+    plot_df = df.copy()
+    has_folder_col = folder_col in plot_df.columns
+    multi_folder = False
+
+    if folder is not None and has_folder_col:
+        folder_mask = plot_df[folder_col].astype(str).apply(lambda v: fnmatch.fnmatch(v, folder))
+        plot_df = plot_df[folder_mask]
+        multi_folder = plot_df[folder_col].nunique() > 1
+
+    if rois is not None:
+        selected_set = {str(roi).strip() for roi in rois}
+        plot_df = plot_df[plot_df["ROI"].astype(str).str.strip().isin(selected_set)]
+    elif status_col in plot_df.columns:
+        plot_df = plot_df[plot_df[status_col] == included_status]
+
+    plot_df = plot_df.copy()
+    if plot_df.empty:
+        print(f"No hay ROIs para graficar (folder={folder!r}, rois={rois!r}).")
+        return plot_df
+
+    # Si folder es un patron que junta varias carpetas, el nombre de ROI se
+    # repite entre ellas: agrupar solo por ROI mezclaria lineas de muestras
+    # distintas bajo la misma etiqueta/color.
+    group_cols = [folder_col, "ROI"] if multi_folder else ["ROI"]
+
+    plt.figure(figsize=(8, 5))
+    for key, sub in plot_df.groupby(group_cols):
+        sub = sub.sort_values(x_col)
+        label = ":".join(key) if multi_folder else key
+        plt.plot(sub[x_col], sub[value_col], linewidth=1.2, alpha=alpha, label=label)
+
+    if show_mean_se:
+        bins = pd.cut(plot_df[x_col], bins=n_bins)
+        bin_summary = plot_df.groupby(bins, observed=True)[value_col].agg(
+            mean="mean",
+            sem=lambda x: x.std(ddof=1) / (len(x) ** 0.5) if len(x) > 1 else 0.0,
+            n="size",
+        )
+        bin_centers = bin_summary.index.map(lambda iv: iv.mid).astype(float)
+        plt.errorbar(
+            bin_centers,
+            bin_summary["mean"],
+            yerr=bin_summary["sem"],
+            color="black",
+            marker="o",
+            linewidth=2,
+            capsize=3,
+            label="mean ± SEM",
+        )
+
+    plt.axhline(0, linestyle="--", alpha=0.4)
+    plt.xlabel(x_col)
+    plt.ylabel(value_col)
+    title = f"{folder}: " if folder is not None else ""
+    n_folders = plot_df[folder_col].nunique() if has_folder_col else 1
+    folders_label = f", {n_folders} muestras" if multi_folder else ""
+    plt.title(f"{title}{value_col} de ROI seleccionadas ({plot_df['ROI'].nunique()} ROIs{folders_label})")
+    plt.legend(title="folder:ROI" if multi_folder else "ROI", bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+    plt.tight_layout()
+    plt.show()
+
+    print(f"{folder}: {plot_df['ROI'].nunique()} ROIs graficadas, {len(plot_df)} filas")
 
     return plot_df
 
@@ -932,6 +1138,7 @@ def process_sample(
     drop_frames_without_ttl=True,
     phase_filter=None,
     temp_range=None,
+    selected_rois="all",
 ):
     """
     Procesa una muestra de imagen + ABF manteniendo la alineación frame-TTL.
@@ -961,6 +1168,15 @@ def process_sample(
     Esto evita que Imax quede definido por temperaturas fuera del rango que
     después se usa en analyze_temp_trends / temp_ranges. target_temp debe caer
     dentro de temp_range, o I_baseline quedará sin datos.
+
+    Si selected_rois es una lista de nombres de ROI (ej. ["ROI2", "ROI8"]),
+    la normalización se calcula solo con esas ROIs (se aplica después de
+    phase_filter y temp_range). Si es "all" (por defecto), se usan todas las
+    ROIs. Como Normalization() calcula I_baseline/Imax por ROI de forma
+    independiente, restringir selected_rois no cambia el NormSignal de las
+    ROIs incluidas respecto de correr con "all" y filtrar después; sirve para
+    reprocesar/verificar un subconjunto ya curado (ej. roi_valid_from_crops en
+    01_preprocessing.ipynb) sin volver a normalizar ROIs descartadas.
 
     Para excluir segmentos no deseados del análisis, filtra después de procesar:
 
@@ -1050,6 +1266,17 @@ def process_sample(
                 f"(había {frames_after_phase_filter} antes del filtro)."
             )
 
+    if selected_rois != "all":
+        selected_set = {str(roi).strip() for roi in selected_rois}
+        df_for_norm = df_for_norm[
+            df_for_norm["ROI"].astype(str).str.strip().isin(selected_set)
+        ].copy()
+        if df_for_norm.empty:
+            raise ValueError(
+                "Ninguna de las selected_rois quedó en df_for_norm; revisa los "
+                "nombres de ROI o los filtros de phase_filter/temp_range."
+            )
+
     df_norm = Normalization(
         df_for_norm,
         norm_type=norm_type,
@@ -1073,6 +1300,7 @@ def process_sample(
         "cooling_df": df_phase[df_phase["phase"] == "cooling"].copy(),
         "phase_filter": phase_filter,
         "temp_range": temp_range,
+        "selected_rois": selected_rois,
         "frame_counts": {
             "frames_csv_total": frames_csv_total,
             "frames_with_ttl": frames_with_ttl,
@@ -1142,6 +1370,82 @@ def process_sample(
         pass
 
     return outputs
+
+
+def process_selected_folders(base_dir, folders, preprocessed_all, **process_sample_kwargs):
+    """
+    Reprocesa varias muestras desde los archivos crudos y junta los resultados.
+
+    process_sample() solo puede leer un ABF/CSV crudo a la vez, así que un
+    folder con patrón (ej. 'mut27_*') no le sirve directamente: esta función
+    recorre folders con un for, y para cada carpeta deriva su propia lista de
+    ROI activas con selected_rois_from_long(preprocessed_all, folder=<esa
+    carpeta>) antes de llamar a process_sample(). Como cada carpeta se
+    resuelve por separado, no hay riesgo de mezclar ROI del mismo nombre
+    entre muestras.
+
+    Parameters
+    ----------
+    base_dir : str or Path
+        Carpeta que contiene una subcarpeta por muestra (ej. Proc_data).
+    folders : list of str
+        Carpetas a reprocesar, ej. ['mut27_image10', 'mut27_image11']. Se
+        puede construir con fnmatch, ej.:
+            fnmatch.filter(preprocessed_all['source_folder'].unique(), 'mut27_*')
+    preprocessed_all : pandas.DataFrame
+        Compilado de *_preprocessed_long.csv (ver load_all_preprocessed_long),
+        usado para derivar selected_rois de cada carpeta vía ROI_status.
+    **process_sample_kwargs
+        Argumentos comunes para process_sample() (start_ttl, threshold,
+        target_temp, norm_type, phase_filter, temp_range, etc.), aplicados
+        igual a todas las carpetas.
+
+    Returns
+    -------
+    dict
+        - "df_phase_all": concat de df_phase de cada carpeta reprocesada, con
+          columna source_folder agregada (compatible con folder="patron" en
+          graph_selected_rois_by_folder).
+        - "processed_by_folder": {folder: dict de process_sample()} por si se
+          necesita algo más además de df_phase.
+        - "skipped": lista de (folder, motivo) para carpetas sin ROI activas
+          o donde process_sample() falló.
+    """
+    df_phase_list = []
+    processed_by_folder = {}
+    skipped = []
+
+    for folder in folders:
+        selected_rois = selected_rois_from_long(preprocessed_all, folder=folder)
+        if not selected_rois:
+            skipped.append((folder, "sin ROIs con ROI_status=1"))
+            continue
+
+        input_dir = Path(base_dir) / folder
+        try:
+            processed = process_sample(input_dir, selected_rois=selected_rois, **process_sample_kwargs)
+        except Exception as exc:
+            skipped.append((folder, str(exc)))
+            continue
+
+        df_phase = processed["df_phase"].copy()
+        df_phase["source_folder"] = folder
+        df_phase_list.append(df_phase)
+        processed_by_folder[folder] = processed
+
+    df_phase_all = pd.concat(df_phase_list, ignore_index=True) if df_phase_list else pd.DataFrame()
+
+    print(f"Reprocesadas {len(processed_by_folder)}/{len(folders)} carpetas.")
+    if skipped:
+        print("Carpetas omitidas:")
+        for folder, reason in skipped:
+            print(f"  {folder}: {reason}")
+
+    return {
+        "df_phase_all": df_phase_all,
+        "processed_by_folder": processed_by_folder,
+        "skipped": skipped,
+    }
 
 
 def analyze_temp_trends(
@@ -1448,6 +1752,60 @@ def load_exported_experiments(
         "processed_all": pd.concat(processed_dfs, ignore_index=True) if processed_dfs else pd.DataFrame(),
         "filtered_all": pd.concat(filtered_dfs, ignore_index=True) if filtered_dfs else pd.DataFrame(),
         "preprocessed_all": pd.concat(preprocessed_dfs, ignore_index=True) if preprocessed_dfs else pd.DataFrame(),
+    }
+
+
+def load_all_preprocessed_long(base_dir, pattern="*/*_preprocessed_long.csv"):
+    """
+    Concatena todos los *_preprocessed_long.csv encontrados bajo base_dir,
+    sin depender de un Excel de experimentos activos.
+
+    Cada CSV ya trae 'sample' y 'genotype' nativamente (fijados en
+    01_preprocessing.ipynb), así que no hace falta metadata externa para
+    identificar una fila. Solo se agregan 'source_folder' y 'source_file'
+    a partir de la ruta del archivo, para poder rastrear el origen y para
+    detectar duplicados (más de un archivo por carpeta).
+
+    Parameters
+    ----------
+    base_dir : str or Path
+        Carpeta que contiene una subcarpeta por muestra (ej. Proc_data).
+    pattern : str
+        Patrón glob relativo a base_dir para encontrar los CSV.
+
+    Returns
+    -------
+    dict
+        - "preprocessed_all": DataFrame concatenado (vacío si no hay archivos).
+        - "load_status": DataFrame con una fila por carpeta encontrada,
+          listando sus *_preprocessed_long.csv y si hay más de uno.
+    """
+    base_dir = Path(base_dir)
+
+    dfs = []
+    files_by_folder = {}
+    for file_path in sorted(base_dir.glob(pattern)):
+        folder = file_path.parent.name
+        files_by_folder.setdefault(folder, []).append(file_path.name)
+
+        df = pd.read_csv(file_path)
+        df["source_folder"] = folder
+        df["source_file"] = file_path.name
+        dfs.append(df)
+
+    load_status = pd.DataFrame([
+        {
+            "folder": folder,
+            "preprocessed_files": names,
+            "n_files": len(names),
+            "status": "ok" if len(names) == 1 else ("multiple" if len(names) > 1 else "faltan csv"),
+        }
+        for folder, names in sorted(files_by_folder.items())
+    ])
+
+    return {
+        "preprocessed_all": pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame(),
+        "load_status": load_status,
     }
 
 
