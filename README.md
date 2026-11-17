@@ -58,6 +58,25 @@ data/Proc_data/
 └── ...
 ```
 
+### ImageJ pipeline layout (current)
+
+The Fiji macros (cleaning, StarDist ROIs, measurement) leave this structure per sample, under a root such as `Fluo4/`:
+
+```text
+Fluo4/<mutant>/<date>/<sample>/        # <mutant>: 1227, 1265, Wt, ...
+├── <stem>.tif                         # original stack (e.g. Nov052026_19_Stack.tif)
+├── <recording>.abf
+├── limpieza_ij/   <stem>_clean_quant.tif, <stem>_clean_view.tif, <stem>_drift_shifts_ij.csv
+└── rois_ij/       <stem>_RoiSet.zip, <stem>_ROI_Results.csv, <stem>_rois_table_ij.csv
+```
+
+`ttl.find_files()` understands this layout (also with `rois_ij` nested inside `limpieza_ij`, and the older flat layout with `ROI*.csv` next to the `.abf`). Notes:
+
+- **Drift/transition frames**: if `limpieza_ij/<stem>_drift_shifts_ij.csv` exists, `ttl.process_sample()` adds `dy_px`, `dx_px` and `is_transition`, and with `drop_transition=True` (default) excludes transition frames *before* normalizing. Heating/cooling is still detected with all frames.
+- **Genotype / sample** come from the path: `ttl.infer_sample_genotype()` maps the mutant folder to `"m" + last two digits` (`1265` -> `m65`, `Wt` -> `WT`; override with `genotype_map`), and the sample from the stem (`Nov052026_19`).
+- **`source_folder`** in the batch tables is now the path relative to the root (`1265/Nov05/Nov052026_19`), so use patterns like `"1257/*"` in notebook 02.
+- ROI crops (`roi_image_crops.py`) read the clean stack (`limpieza_ij/*_clean_quant.tif`) and `rois_ij/*_RoiSet.zip` when present, because the ROIs were drawn on the drift-corrected stack.
+
 Large data files are intentionally ignored by git.
 
 ## Workflow

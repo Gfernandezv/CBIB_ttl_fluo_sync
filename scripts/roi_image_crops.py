@@ -143,6 +143,11 @@ def find_sample_tif(sample_dir):
         Si hay más de un .tif/.tiff y no se puede elegir sin ambigüedad.
     """
     sample_dir = Path(sample_dir)
+    # Pipeline de ImageJ: los ROI se dibujaron sobre el stack corregido por deriva
+    # (limpieza_ij/<stem>_clean_quant.tif); recortar el original los desalinearia.
+    clean = sorted((sample_dir / "limpieza_ij").glob("*_clean_quant.tif"))
+    if len(clean) == 1:
+        return clean[0]
     candidates = sorted(sample_dir.glob("*.tif")) + sorted(sample_dir.glob("*.tiff"))
 
     if len(candidates) == 0:
@@ -156,6 +161,25 @@ def find_sample_tif(sample_dir):
         )
 
     return candidates[0]
+
+
+def _resolve_roi_zip(sample_dir, roi_zip_name="RoiSet.zip"):
+    """
+    Ruta del RoiSet de la muestra. Si <sample_dir>/<roi_zip_name> existe se usa tal
+    cual; si no, se busca el *_RoiSet.zip del pipeline de ImageJ en rois_ij/ (o en
+    limpieza_ij/rois_ij/).
+    """
+    sample_dir = Path(sample_dir)
+    direct = sample_dir / roi_zip_name
+    if direct.exists():
+        return direct
+    for sub in ("rois_ij", "limpieza_ij/rois_ij"):
+        found = sorted((sample_dir / sub).glob("*_RoiSet.zip"))
+        if found:
+            if len(found) > 1:
+                print(f"Advertencia: varios RoiSet en {sub}; se usa {found[0].name}")
+            return found[0]
+    return direct  # deja que el error de carga muestre la ruta esperada
 
 
 def format_crop_filename(genotype, sample, roi_name, extension="tif"):
@@ -196,8 +220,9 @@ def format_crop_filename(genotype, sample, roi_name, extension="tif"):
     digits_sample = "".join(ch for ch in sample_str if ch.isdigit())
     if not digits_sample:
         raise ValueError(f"No se pudo derivar el número de imagen de sample={sample!r}")
-    # Toma el último bloque de dígitos si hay varios (ej. 'sample_19' -> '19')
-    imagen = digits_sample.lstrip("0") or "0"
+    # Toma el último bloque de dígitos (ej. 'sample_19' -> '19', 'Nov052026_19' -> '19')
+    last_block = re.findall(r"\d+", sample_str)[-1]
+    imagen = last_block.lstrip("0") or "0"
 
     roi_str = str(roi_name).strip()
     digits_roi = "".join(ch for ch in roi_str if ch.isdigit())
@@ -478,7 +503,7 @@ def crop_selected_rois(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tif_path = (sample_dir / tif_name) if tif_name is not None else find_sample_tif(sample_dir)
-    roi_zip_path = sample_dir / roi_zip_name
+    roi_zip_path = _resolve_roi_zip(sample_dir, roi_zip_name)
 
     rois = load_rois_ordered(roi_zip_path)
     stack = _load_stack(tif_path)
@@ -565,7 +590,7 @@ def crop_selected_rois_sorted_by_temperature(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     tif_path = (sample_dir / tif_name) if tif_name is not None else find_sample_tif(sample_dir)
-    roi_zip_path = sample_dir / roi_zip_name
+    roi_zip_path = _resolve_roi_zip(sample_dir, roi_zip_name)
 
     rois = load_rois_ordered(roi_zip_path)
     stack = _load_stack(tif_path)

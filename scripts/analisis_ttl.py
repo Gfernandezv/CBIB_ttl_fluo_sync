@@ -1009,6 +1009,8 @@ def process_sample(
     phase_filter=None,
     temp_range=None,
     selected_rois="all",
+    drop_transition=True,
+    abf_name=None,
 ):
     """
     Procesa una muestra de imagen + ABF manteniendo la alineación frame-TTL.
@@ -1073,6 +1075,12 @@ def process_sample(
         - df_norm / df_phase: datos normalizados, conservando phase.
         - heating_df / cooling_df: subconjuntos normalizados por fase.
         - frame_counts: resumen de frames/TTL usados.
+
+    Si existe el CSV de deriva del pipeline de ImageJ (limpieza_ij/<stem>_drift_shifts_ij.csv),
+    se agregan dy_px, dx_px e is_transition al formato largo. Con drop_transition=True los
+    frames en transicion (el campo se movio) se excluyen ANTES de normalizar, para que no
+    distorsionen I_baseline ni Imax; la fase heating/cooling se detecta con todos los frames.
+    abf_name elige el .abf cuando la carpeta tiene mas de uno.
     """
     if phase_filter not in {None, "cooling", "heating"}:
         raise ValueError("phase_filter debe ser None, 'cooling' o 'heating'.")
@@ -1082,7 +1090,7 @@ def process_sample(
         if t_min >= t_max:
             raise ValueError("temp_range debe ser (t_min, t_max) con t_min < t_max.")
 
-    files = find_files(input_dir)
+    files = find_files(input_dir, abf_name=abf_name)
     roi_csv = pd.read_csv(files["roi_csv"])
     frames_csv_total = len(roi_csv)
     assigned_ttl_first = start_ttl
@@ -1113,6 +1121,18 @@ def process_sample(
         drop_frames_without_ttl=drop_frames_without_ttl
     )
 
+    drift = None
+    if files.get("drift_csv"):
+        drift = load_drift(files["drift_csv"])
+        if len(drift) != frames_csv_total:
+            print(f"Advertencia: la deriva tiene {len(drift)} frames y ROI_Results {frames_csv_total}; "
+                  "revisa que sean de la misma muestra.")
+        df_long = df_long.merge(drift[["frame", "dy_px", "dx_px", "transition"]], on="frame", how="left")
+        df_long["is_transition"] = df_long["transition"].fillna(0).astype(int).eq(1)
+        df_long = df_long.drop(columns=["transition"])
+    else:
+        df_long["is_transition"] = False
+
     frames_with_ttl = df_long["frame"].nunique()
     frames_without_ttl = frames_csv_total - frames_with_ttl
 
@@ -1124,6 +1144,11 @@ def process_sample(
         df_for_norm = df_long_phase[df_long_phase["phase"] == phase_filter].copy()
 
     frames_after_phase_filter = df_for_norm["frame"].nunique()
+
+    frames_transition_dropped = 0
+    if drop_transition and df_for_norm["is_transition"].any():
+        frames_transition_dropped = int(df_for_norm.loc[df_for_norm["is_transition"], "frame"].nunique())
+        df_for_norm = df_for_norm[~df_for_norm["is_transition"]].copy()
 
     if temp_range is not None:
         t_min, t_max = temp_range
@@ -1176,6 +1201,7 @@ def process_sample(
             "frames_with_ttl": frames_with_ttl,
             "frames_without_ttl": frames_without_ttl,
             "frames_after_phase_filter": frames_after_phase_filter,
+            "frames_transition_dropped": frames_transition_dropped,
             "frames_after_temp_range": df_for_norm["frame"].nunique(),
             "assigned_ttl_first": assigned_ttl_first,
             "assigned_ttl_last": assigned_ttl_last,
@@ -1191,6 +1217,8 @@ def process_sample(
     print(f"  frames sin TTL asociado: {frames_without_ttl}")
     print(f"  filtro de fase previo a normalizar: {phase_filter or 'ninguno'}")
     print(f"  filtro de rango de temperatura previo a normalizar: {temp_range or 'ninguno'}")
+    if drift is not None:
+        print(f"  frames en transicion excluidos: {frames_transition_dropped}" + ("" if drop_transition else " (drop_transition=False)"))
     print(f"  frames usados para normalizar: {df_for_norm['frame'].nunique()}")
     print(f"  TTL_index asignados a frames: {assigned_ttl_first} a {assigned_ttl_last}")
     print(f"  TTL_index detectados: {temp_ttl_df.index.min()} a {temp_ttl_df.index.max()}")
@@ -1538,7 +1566,7 @@ def export_results(
     return output_files
 
 
-def load_all_preprocessed_long(base_dir, pattern="*/*_preprocessed_long.csv"):
+def load_all_preprocessed_long(base_dir, pattern="**/*_preprocessed_long.csv"):
     """
     Concatena todos los *_preprocessed_long.csv encontrados bajo base_dir,
     sin depender de un Excel de experimentos activos.
@@ -1568,7 +1596,9 @@ def load_all_preprocessed_long(base_dir, pattern="*/*_preprocessed_long.csv"):
     dfs = []
     files_by_folder = {}
     for file_path in sorted(base_dir.glob(pattern)):
-        folder = file_path.parent.name
+        # ruta relativa a base_dir (ej. "1265/Nov05/Nov052026_19"); en la estructura
+        # vieja de un nivel coincide con el nombre de la carpeta
+        folder = file_path.parent.relative_to(base_dir).as_posix()
         files_by_folder.setdefault(folder, []).append(file_path.name)
 
         df = pd.read_csv(file_path)
@@ -1867,65 +1897,173 @@ def export_preprocessed_long(
 
 
 
-def find_files(input_dir):
-    """
-    Busca automáticamente:
-    - ROI*.csv
-    - *.abf
+LIMPIEZA_DIR = "limpieza_ij"
+ROIS_DIR = "rois_ij"
+ROI_RESULTS_SUFFIX = "_ROI_Results.csv"
 
-    dentro de input_dir.
+
+def find_files(input_dir, abf_name=None, stem=None, verbose=True):
+    """
+    Busca los archivos de una muestra. Acepta tres disposiciones:
+
+    1) Pipeline de ImageJ (actual), por muestra:
+         <stem>.tif, *.abf
+         limpieza_ij/  <stem>_clean_quant.tif, <stem>_drift_shifts_ij.csv
+         rois_ij/      <stem>_RoiSet.zip, <stem>_ROI_Results.csv
+    2) Igual, pero con rois_ij dentro de limpieza_ij (corridas antiguas).
+    3) Disposicion vieja: ROI*.csv suelto junto al .abf.
+
+    Parameters
+    ----------
+    abf_name : str or None
+        Si la carpeta tiene mas de un .abf, nombre del que se usa.
+    stem : str or None
+        Si hay varios *_ROI_Results.csv, el stem (nombre del stack sin extension).
 
     Returns
     -------
     dict
+        roi_csv, abf_file, output_dir (compatibles con la version anterior) y
+        stem, drift_csv, roiset, quant (None si no existen).
     """
-
+    input_dir = str(input_dir)
     if not os.path.isdir(input_dir):
         raise ValueError(f"No existe carpeta: {input_dir}")
+    sample_dir = Path(input_dir)
 
-    roi_files = sorted(
-        glob.glob(os.path.join(input_dir, "ROI*.csv"))
-    )
+    cand_dirs = [sample_dir / ROIS_DIR, sample_dir / LIMPIEZA_DIR / ROIS_DIR, sample_dir]
+    roi_files = []
+    for d in cand_dirs:
+        if d.is_dir():
+            roi_files += sorted(d.glob("*" + ROI_RESULTS_SUFFIX))
+            if (d / "ROI_Results.csv").exists():
+                roi_files.append(d / "ROI_Results.csv")
+    legacy = sorted(sample_dir.glob("ROI*.csv"))
+    roi_csv = None
+    if stem is not None:
+        for d in cand_dirs:
+            f = d / f"{stem}{ROI_RESULTS_SUFFIX}"
+            if f.exists():
+                roi_csv = f
+                break
+    if roi_csv is None and roi_files:
+        roi_csv = roi_files[0]
+    if roi_csv is None and legacy:
+        roi_csv = legacy[0]
 
-    abf_files = sorted(
-        glob.glob(os.path.join(input_dir, "*.abf"))
-    )
+    abf_files = sorted(sample_dir.glob("*.abf"))
 
-    print(f"Archivos encontrados en: {input_dir}")
-    print("  ROI CSV:")
-    if roi_files:
-        for file in roi_files:
-            print(f"    - {os.path.basename(file)}")
-    else:
-        print("    - ninguno")
+    if verbose:
+        print(f"Archivos encontrados en: {input_dir}")
+        print("  ROI CSV:")
+        for f in (roi_files or legacy) or []:
+            print(f"    - {f.relative_to(sample_dir).as_posix()}")
+        if not (roi_files or legacy):
+            print("    - ninguno")
+        print("  ABF:")
+        for f in abf_files:
+            print(f"    - {f.name}")
+        if not abf_files:
+            print("    - ninguno")
 
-    print("  ABF:")
-    if abf_files:
-        for file in abf_files:
-            print(f"    - {os.path.basename(file)}")
-    else:
-        print("    - ninguno")
-
-    if len(roi_files) == 0:
-        raise FileNotFoundError("No se encontró ROI*.csv")
-
-    if len(abf_files) == 0:
+    if roi_csv is None:
+        raise FileNotFoundError(
+            f"No se encontro *{ROI_RESULTS_SUFFIX} (ni ROI*.csv) en {input_dir}"
+        )
+    if not abf_files:
         raise FileNotFoundError("No se encontró *.abf")
 
-    if len(roi_files) > 1:
-        print(
-            "Advertencia: múltiples ROI csv encontrados. "
-            f"Se usará: {os.path.basename(roi_files[0])}"
-        )
+    if abf_name:
+        match = [f for f in abf_files if f.stem.lower() == Path(abf_name).stem.lower()]
+        if not match:
+            raise FileNotFoundError(
+                f"El .abf '{abf_name}' no esta en {input_dir}. Hay: {[f.name for f in abf_files]}"
+            )
+        abf = match[0]
+    else:
+        abf = abf_files[0]
+        if len(abf_files) > 1 and verbose:
+            print(f"Advertencia: múltiples ABF encontrados. Se usará: {abf.name} (usa abf_name=... para elegir)")
 
-    if len(abf_files) > 1:
-        print(
-            "Advertencia: múltiples ABF encontrados. "
-            f"Se usará: {os.path.basename(abf_files[0])}"
-        )
+    if stem is None:
+        name = roi_csv.name
+        stem = name[: -len(ROI_RESULTS_SUFFIX)] if name.endswith(ROI_RESULTS_SUFFIX) else roi_csv.stem
+    if len({f.name for f in roi_files}) > 1 and verbose:
+        print(f"Advertencia: múltiples ROI csv encontrados. Se usará: {roi_csv.name}")
+
+    def first(paths):
+        for q in paths:
+            if q.exists():
+                return str(q)
+        return None
 
     return {
-        "roi_csv": roi_files[0],
-        "abf_file": abf_files[0],
-        "output_dir": input_dir
+        "roi_csv": str(roi_csv),
+        "abf_file": str(abf),
+        "output_dir": input_dir,
+        "stem": stem,
+        "drift_csv": first([
+            sample_dir / LIMPIEZA_DIR / f"{stem}_drift_shifts_ij.csv",
+            sample_dir / f"{stem}_drift_shifts_ij.csv",
+        ]),
+        "roiset": first([
+            sample_dir / ROIS_DIR / f"{stem}_RoiSet.zip",
+            sample_dir / LIMPIEZA_DIR / ROIS_DIR / f"{stem}_RoiSet.zip",
+            sample_dir / "RoiSet.zip",
+        ]),
+        "quant": first([
+            sample_dir / LIMPIEZA_DIR / f"{stem}_clean_quant.tif",
+            sample_dir / f"{stem}_clean_quant.tif",
+        ]),
     }
+
+
+def sample_from_stem(stem):
+    """'Nov052026_19_Stack' -> 'Nov052026_19'."""
+    return re.sub(r"_(stack|roi)$", "", str(stem).strip(), flags=re.I)
+
+
+def genotype_from_folder(folder, genotype_map=None):
+    """
+    Genotipo a partir de la carpeta del mutante: '1265' -> 'm65', 'Wt' -> 'WT'
+    (regla: 'm' + ultimos 2 digitos). genotype_map={"1243": "m43"} tiene prioridad.
+    """
+    f = str(folder).strip()
+    if genotype_map and f in genotype_map:
+        return genotype_map[f]
+    if f.lower() in {"wt", "wild type", "wildtype"}:
+        return "WT"
+    m = re.fullmatch(r"\d*?(\d{2})", f)
+    if m and len(f) >= 3:
+        return "m" + m.group(1)
+    return f
+
+
+def infer_sample_genotype(input_dir, root, abf_name=None, genotype_map=None):
+    """
+    (sample, genotype) de una muestra del pipeline de ImageJ.
+    genotype sale de la carpeta de primer nivel bajo root; sample, del stem del ROI_Results.
+    Si la ruta es de la estructura vieja (mut36_image8), usa esa convencion.
+    """
+    input_dir, root = Path(input_dir), Path(root)
+    try:
+        parts = input_dir.relative_to(root).parts
+    except ValueError:
+        parts = (input_dir.name,)
+    m = re.fullmatch(r"mut(\d+)_image(\d+)", parts[-1])
+    if m:
+        return "sample_" + m.group(2).zfill(2), "m" + m.group(1)
+    files = find_files(input_dir, abf_name=abf_name, verbose=False)
+    return sample_from_stem(files["stem"]), genotype_from_folder(parts[0], genotype_map)
+
+
+def load_drift(drift_csv):
+    """CSV de deriva de ImageJ (frame desde 0, dy_px, dx_px, transition) -> frame desde 1."""
+    d = pd.read_csv(drift_csv)
+    d.columns = [str(c).strip() for c in d.columns]
+    missing = {"frame", "dy_px", "dx_px", "transition"} - set(d.columns)
+    if missing:
+        raise ValueError(f"Faltan columnas en {drift_csv}: {sorted(missing)}")
+    d["frame"] = d["frame"].astype(int) + 1
+    d["transition"] = d["transition"].fillna(0).astype(int)
+    return d
