@@ -1108,6 +1108,16 @@ def process_sample(
         threshold=threshold
     )
 
+    if events_df.empty:
+        ttl_sig = np.asarray(data["ttl"], dtype=float)
+        meta = data.get("metadata", {})
+        raise ValueError(
+            f"No se detectaron pulsos TTL en {files['abf_file']} con threshold={threshold} "
+            f"(canal TTL={ttl_channel}). Rango del canal TTL: {np.nanmin(ttl_sig):.3f} a "
+            f"{np.nanmax(ttl_sig):.3f}; canales del ABF: {meta.get('channel_names')}. "
+            "Revisa que el .abf corresponda a esta muestra, ttl_channel/temp_channel y el threshold."
+        )
+
     temp_ttl_df = mean_temperature_during_ttl(
         data["temperature"],
         data["time"],
