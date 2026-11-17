@@ -8,7 +8,7 @@ repite en todas las grabaciones o es de una sola.
 
 Uso (desde la carpeta scripts/ o con la ruta completa):
     python diagnostico_abf.py "/Volumes/TOSHIBA EXT/Germán Fernandez/TRPM3/Fluo4"
-    python diagnostico_abf.py RAIZ --threshold 0.2 --ttl-channel 1 --temp-channel 0 --salida diag.csv
+    python diagnostico_abf.py RAIZ --threshold 0.1 --ttl-channel 1 --temp-channel 0 --salida diag.csv
 
 Solo lee; no modifica nada. Escribe un CSV (por defecto diagnostico_abf.csv en la carpeta actual).
 """
@@ -89,7 +89,7 @@ def diagnose(sample_dir, roi_csv, abf_path, thr, ttl_ch, temp_ch):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("raiz")
-    ap.add_argument("--threshold", type=float, default=0.2)
+    ap.add_argument("--threshold", type=float, default=0.1)
     ap.add_argument("--ttl-channel", type=int, default=1)
     ap.add_argument("--temp-channel", type=int, default=0)
     ap.add_argument("--salida", default="diagnostico_abf.csv")

@@ -1118,6 +1118,26 @@ def process_sample(
             "Revisa que el .abf corresponda a esta muestra, ttl_channel/temp_channel y el threshold."
         )
 
+    # Control de sincronizacion: un umbral mal elegido puede dar pulsos de mas (ruido sobre un
+    # plateau bajo) o de menos; en ambos casos los frames reciben la temperatura equivocada sin
+    # que falle nada (frames_without_ttl puede salir 0 igualmente).
+    n_events = len(events_df)
+    onset_iv = np.diff(events_df["onset_time"].values.astype(float))
+    iv_cv = float(np.std(onset_iv) / np.mean(onset_iv)) if onset_iv.size > 1 and np.mean(onset_iv) > 0 else float("nan")
+    sync_warnings = []
+    if n_events > frames_csv_total * 1.05:
+        sync_warnings.append(f"hay {n_events} pulsos TTL para {frames_csv_total} frames (sobran)")
+    if n_events < frames_csv_total:
+        sync_warnings.append(f"hay {n_events} pulsos TTL para {frames_csv_total} frames (faltan)")
+    if np.isfinite(iv_cv) and iv_cv > 0.2:
+        sync_warnings.append(f"el intervalo entre pulsos es muy irregular (CV={iv_cv:.2f})")
+    if sync_warnings:
+        print("!" * 70)
+        print("ADVERTENCIA DE SINCRONIZACION: " + "; ".join(sync_warnings) + ".")
+        print(f"  threshold={threshold}. Revisa el umbral (con pulsos de baja amplitud usa un valor "
+              "menor, ej. 0.1) y que el .abf corresponda a la muestra.")
+        print("!" * 70)
+
     temp_ttl_df = mean_temperature_during_ttl(
         data["temperature"],
         data["time"],
@@ -1217,7 +1237,10 @@ def process_sample(
             "assigned_ttl_last": assigned_ttl_last,
             "detected_ttl_first": int(temp_ttl_df.index.min()),
             "detected_ttl_last": int(temp_ttl_df.index.max()),
+            "n_ttl_events": n_events,
+            "ttl_interval_cv": iv_cv,
         },
+        "sync_warnings": sync_warnings,
     }
 
     print("Procesamiento completo:")
