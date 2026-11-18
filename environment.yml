@@ -4,6 +4,8 @@ channels:
 dependencies:
   - python=3.11
   - pip
+  - pyyaml
+  - scipy
   - numpy
   - pandas
   - matplotlib
@@ -17,3 +19,4 @@ dependencies:
       - pyabf
       - roifile
       - tifffile
+      - -e .
