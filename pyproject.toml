@@ -12,6 +12,9 @@ dependencies = ["numpy", "pandas", "scipy", "matplotlib", "pyabf", "pyyaml"]
 [project.scripts]
 fluo-ttl = "fluo_ttl.cli:main"
 
+[project.optional-dependencies]
+imagenes = ["tifffile", "roifile"]
+
 [tool.setuptools]
 packages = ["fluo_ttl"]
 
