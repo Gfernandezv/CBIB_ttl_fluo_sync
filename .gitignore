@@ -15,3 +15,5 @@ Graphs/
 *.jpeg
 *.pdf
 *.svg
+resultados*/
+*.egg-info/

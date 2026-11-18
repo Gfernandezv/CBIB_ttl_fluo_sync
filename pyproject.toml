@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fluo-ttl"
+version = "2.0.0"
+description = "Sincronización fluorescencia (Fluo-4) y temperatura vía TTL para TRPM3: pipeline reproducible por línea de comandos."
+requires-python = ">=3.10"
+dependencies = ["numpy", "pandas", "scipy", "matplotlib", "pyabf", "pyyaml"]
+
+[project.scripts]
+fluo-ttl = "fluo_ttl.cli:main"
+
+[tool.setuptools]
+packages = ["fluo_ttl"]

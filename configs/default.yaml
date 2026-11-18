@@ -1,0 +1,43 @@
+# Parametros por defecto de fluo_ttl 2.0. Un experimento = este archivo + una carpeta de datos.
+# Todo lo que cambia un resultado vive aqui; `fluo-ttl run` guarda una copia junto a los resultados.
+genotipos: [Wt, "1227", "1236", "1243", "1250", "1257", "1265"]   # nombre de la carpeta = genotipo
+referencia: Wt                                                     # genotipo cuyos percentiles definen el piso
+
+ttl:
+  canal_temperatura: 0
+  canal_ttl: 1
+  umbral: auto                 # 'auto' busca el umbral que da n_pulsos = n_frames (o +1)
+  umbral_fijo: {Wt: 0.1}       # excepciones por genotipo (el TTL del WT tiene solo ~0.23 V de amplitud)
+  tolerancia_pulsos: 1         # se excluye el registro si |pulsos - frames| > tolerancia
+
+qc:
+  ventana_atipicos: 11         # frames de la mediana movil
+  sigma_atipicos: 6.0          # frames donde la mediana entre ROIs se aparta mas de esto se descartan
+
+normalizacion:
+  frames_f0: 20                # F0 por ROI = media de estos primeros frames (antes de calentar)
+  margen_basal_C: 2.0          # frame basal: T <= T0 + margen (T0 = mediana de T en los frames de F0)
+  suavizado_basal: 9           # frames basales de la mediana movil de la deriva comun
+  T_alta: 36.0                 # D = ΔF/F0 corregido mediano a T >= T_alta
+
+graficos:
+  bins_T: [19, 43, 1.0]        # inicio, fin, ancho (°C)
+  min_frames_bin: 3
+  escala_color_pct: 5.0
+  linea_C: 22
+
+disparado:                      # promedio disparado por cada subida de temperatura
+  dT: 2.0
+  ventana_subida_s: 8.0
+  refractario_s: 6.0
+  pre_s: 10.0
+  post_s: 30.0
+  medir_s: [2.0, 12.0]
+  n_nulo: 1000
+  semilla: 1
+  alfa: 0.01
+
+subida_previa:                  # forma de la subida de F antes de calentar
+  margen_inicio_C: 1.0
+  min_frames: 60
+  umbral_pendiente_pct_s: 0.02  # registros que "suben" (para la figura)
