@@ -7,7 +7,7 @@ Analysis workflow for TRPM3 fluorescence imaging synchronized with TTL and tempe
 ```text
 .
 ├── environment.yml
-├── notebooks/
+├── legacy/notebooks/
 │   ├── 01_preprocessing.ipynb   # ABF+ROI alignment, normalization, curation, export
 │   ├── 02_processing.ipynb      # compile all samples, batch reprocessing utilities
 │   ├── 03_analysis.ipynb        # genotype-level NormSignal-vs-temperature curves

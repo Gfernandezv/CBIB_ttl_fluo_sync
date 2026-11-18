@@ -14,3 +14,6 @@ fluo-ttl = "fluo_ttl.cli:main"
 
 [tool.setuptools]
 packages = ["fluo_ttl"]
+
+[tool.setuptools.package-data]
+fluo_ttl = ["default.yaml"]
