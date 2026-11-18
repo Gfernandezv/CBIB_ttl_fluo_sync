@@ -75,4 +75,4 @@ La v1 calculaba F₀ como la intensidad promediada a la temperatura objetivo ±1
 
 ## Repositorio
 
-`fluo_ttl/` paquete · `configs/` ejemplo de config de experimento · `macros/` Fiji (limpieza → ROIs → medición) · `notebooks/05_resultados_v2.ipynb` resultados · `legacy/` v1.
+`fluo_ttl/` paquete · `configs/` ejemplo de config de experimento · `macros/` Fiji (limpieza → ROIs → medición) · `notebooks/05_resultados_v2.ipynb` resultados · `notebooks/06_imagenes_v2.ipynb` mapas de ROIs y vistas por temperatura · `legacy/` v1.
