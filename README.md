@@ -24,7 +24,7 @@ La carpeta de primer nivel es el **genotipo** (`Wt` es la referencia). Dentro, c
 ├── 1236/…   1250/…   1257/…   1227/…   1243/…   1265/…
 ```
 
-Los genotipos reconocidos y los demás parámetros están en `configs/default.yaml`.
+Los genotipos reconocidos y los demás parámetros están en `fluo_ttl/default.yaml`.
 
 ## Uso
 
@@ -35,7 +35,7 @@ fluo-ttl run   <datos> -o resultados -c mi_experimento.yaml   # parámetros prop
 fluo-ttl reproduce <datos> -o resultados        # verifica hashes de entrada, reejecuta y compara tablas
 ```
 
-`mi_experimento.yaml` se fusiona sobre `configs/default.yaml`; por ejemplo:
+`mi_experimento.yaml` (ver `configs/ejemplo_experimento.yaml`) se fusiona sobre `fluo_ttl/default.yaml`; por ejemplo:
 
 ```yaml
 referencia: Wt
@@ -75,4 +75,4 @@ La v1 calculaba F₀ como la intensidad promediada a la temperatura objetivo ±1
 
 ## Repositorio
 
-`fluo_ttl/` paquete · `configs/` parámetros · `macros/` Fiji (limpieza → ROIs → medición) · `notebooks/05_resultados_v2.ipynb` resultados · `legacy/` v1.
+`fluo_ttl/` paquete · `configs/` ejemplo de config de experimento · `macros/` Fiji (limpieza → ROIs → medición) · `notebooks/05_resultados_v2.ipynb` resultados · `legacy/` v1.

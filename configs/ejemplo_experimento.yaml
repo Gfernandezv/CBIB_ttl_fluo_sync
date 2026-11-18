@@ -1,0 +1,7 @@
+# Ejemplo: solo se escribe lo que cambia respecto de fluo_ttl/default.yaml
+# fluo-ttl run <datos> -o resultados -c configs/ejemplo_experimento.yaml
+referencia: Wt
+ttl:
+  umbral_fijo: {Wt: 0.1}
+normalizacion:
+  frames_f0: 20

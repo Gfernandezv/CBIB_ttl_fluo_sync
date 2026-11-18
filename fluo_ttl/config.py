@@ -2,7 +2,7 @@ import copy
 from pathlib import Path
 import yaml
 
-DEFECTO = Path(__file__).resolve().parent.parent / "configs" / "default.yaml"
+DEFECTO = Path(__file__).resolve().parent / "default.yaml"
 
 
 def _fusionar(base, extra):
