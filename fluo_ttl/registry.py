@@ -51,7 +51,11 @@ def detalle_pulsos(registro, raiz, cfg):
     """Tabla de diagnostico de pulsos TTL por registro (con abf), para entender las exclusiones."""
     ttl = cfg["ttl"]; filas = []
     for _, f in registro[registro.abf != ""].iterrows():
-        t, _, v = sg.leer_abf(os.path.join(raiz, f["abf"]), ttl["canal_temperatura"], ttl["canal_ttl"])
-        d = sg.diagnostico_pulsos(t, v, f["umbral_ttl"], int(f["frames"]))
+        t, T, v = sg.leer_abf(os.path.join(raiz, f["abf"]), ttl["canal_temperatura"], ttl["canal_ttl"])
+        d = sg.diagnostico_pulsos(t, v, f["umbral_ttl"], int(f["frames"]), T)
         filas.append(dict(genotipo=f["genotipo"], registro=f["registro"], umbral_ttl=f["umbral_ttl"], incluido=f["incluido"], **d))
-    return pd.DataFrame(filas)
+    df = pd.DataFrame(filas)
+    for c in ("sens_mediana_C", "sens_p95_C"):
+        if c not in df:
+            df[c] = np.nan
+    return df

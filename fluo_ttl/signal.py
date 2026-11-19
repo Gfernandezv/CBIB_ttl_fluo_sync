@@ -27,12 +27,17 @@ def buscar_umbral(v, n_frames, n_cand=60):
     return float(np.median(ok)) if ok else None
 
 
-def temperatura_por_frame(t, T, v, umbral, n_frames):
-    """Frame k = pulso TTL k; T del frame = promedio de la temperatura durante el pulso."""
+def temperatura_por_frame(t, T, v, umbral, n_frames, alineacion="inicio"):
+    """Frame k = pulso TTL k; T del frame = promedio de la temperatura durante el pulso.
+    Si hay mas pulsos que frames, `alineacion` elige cuales: 'inicio' = los primeros n, 'final' = los ultimos n."""
     on, off = pulsos(v, umbral)
     m = min(len(on), n_frames)
-    temp = np.array([T[o:f + 1].mean() for o, f in zip(on[:m], off[:m])])
-    return t[on[:m]], temp
+    if alineacion == "final":
+        on, off = on[len(on) - m:], off[len(off) - m:]
+    else:
+        on, off = on[:m], off[:m]
+    temp = np.array([T[o:f + 1].mean() for o, f in zip(on, off)])
+    return t[on], temp
 
 
 def leer_roi(ruta):
@@ -45,7 +50,7 @@ def leer_transicion(ruta, n):
     return pd.read_csv(ruta)["transition"].to_numpy().astype(bool)[:n]
 
 
-def diagnostico_pulsos(t, v, umbral, n_frames):
+def diagnostico_pulsos(t, v, umbral, n_frames, T=None):
     """Describe los pulsos TTL frente a los frames para decidir por que no coinciden.
     Compara cada intervalo entre pulsos con el mediano y cada duracion con la mediana."""
     on, off = pulsos(v, umbral)
@@ -75,4 +80,8 @@ def diagnostico_pulsos(t, v, umbral, n_frames):
     else:
         s = "dentro de la tolerancia"
     out["sugerencia"] = s
+    if T is not None and 0 < d <= 20:
+        Ta = np.array([T[o:f + 1].mean() for o, f in zip(on, off)])
+        dd = np.abs(Ta[:n_frames] - Ta[d:])        # cambio de T de cada frame segun se alinee con los primeros o los ultimos pulsos
+        out["sens_mediana_C"] = round(float(np.median(dd)), 2); out["sens_p95_C"] = round(float(np.percentile(dd, 95)), 2)
     return out

@@ -9,6 +9,8 @@ ttl:
   umbral: auto                 # 'auto' busca el umbral que da n_pulsos = n_frames (o +1)
   umbral_fijo: {Wt: 0.1}       # excepciones por genotipo (el TTL del WT tiene solo ~0.23 V de amplitud)
   tolerancia_pulsos: 1         # se excluye el registro si |pulsos - frames| > tolerancia
+  alineacion: inicio           # con pulsos de mas: 'inicio' = frame k es el pulso k; 'final' = se descartan los primeros pulsos
+                               # (mira sens_mediana_C / sens_p95_C en `fluo-ttl scan --detalle`: cuanto cambia T segun la alineacion)
 
 qc:
   ventana_atipicos: 11         # frames de la mediana movil

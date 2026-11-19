@@ -55,7 +55,7 @@ def cmd_scan(a):
         pd.set_option("display.width", 250); pd.set_option("display.max_colwidth", 90)
         print("\nDiagnostico de pulsos TTL (registros con diferencia > 1):")
         x = det[det.dif.abs() > 1]
-        print(x[["genotipo", "registro", "pulsos", "frames", "dif", "primer_intervalo", "ultimo_intervalo", "n_intervalos_raros", "sugerencia"]].to_string(index=False) if len(x) else "  todos coinciden")
+        print(x[["genotipo", "registro", "pulsos", "frames", "dif", "primer_intervalo", "ultimo_intervalo", "n_intervalos_raros", "sens_mediana_C", "sens_p95_C", "sugerencia"]].to_string(index=False) if len(x) else "  todos coinciden")
         print(f"-> {a.salida}/pulsos_detalle.csv")
 
 

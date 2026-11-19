@@ -19,7 +19,7 @@ class Registro:
         p = lambda c: os.path.join(raiz, fila[c])
         F = sg.leer_roi(p("roi_csv"))
         t, T, v = sg.leer_abf(p("abf"), cfg["ttl"]["canal_temperatura"], cfg["ttl"]["canal_ttl"])
-        self.t, self.T = sg.temperatura_por_frame(t, T, v, fila["umbral_ttl"], len(F))
+        self.t, self.T = sg.temperatura_por_frame(t, T, v, fila["umbral_ttl"], len(F), cfg["ttl"].get("alineacion", "inicio"))
         self.n = len(self.T); self.F = F[: self.n]
         self.transicion = sg.leer_transicion(p("deriva_csv"), self.n)
         self.genotipo, self.registro = fila["genotipo"], int(fila["registro"])
