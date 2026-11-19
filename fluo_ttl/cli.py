@@ -30,7 +30,7 @@ def _sin_registros(reg, raiz, cfg):
         sub = sorted(d for d in os.listdir(raiz) if os.path.isdir(os.path.join(raiz, d))) if os.path.isdir(raiz) else []
         extra = [d for d in sub if d not in cfg["genotipos"]]
         msg = [f"No se encontro ningun registro en: {raiz}",
-               "Se busca  <datos>/<genotipo>/**/rois_ij/*_Stack_ROI_Results.csv  junto a un .abf y limpieza_ij/*drift_shifts_ij.csv.",
+               "Se busca  <datos>/<genotipo>/**/rois_ij/*_ROI_Results.csv  junto a un .abf y limpieza_ij/*drift_shifts_ij.csv.",
                f"Genotipos buscados (configs): {', '.join(cfg['genotipos'])}"]
         if not os.path.isdir(raiz):
             msg.append("La carpeta no existe: revisa la ruta (entre comillas si tiene espacios).")

@@ -1,6 +1,6 @@
 # Parametros por defecto de fluo_ttl 2.0. Un experimento = este archivo + una carpeta de datos.
 # Todo lo que cambia un resultado vive aqui; `fluo-ttl run` guarda una copia junto a los resultados.
-genotipos: [Wt, "1227", "1236", "1243", "1250", "1257", "1265"]   # nombre de la carpeta = genotipo
+genotipos: [Wt, "1227", "1236", "1243", "1245", "1250", "1257", "1265"]   # nombre de la carpeta = genotipo
 referencia: Wt                                                     # genotipo cuyos percentiles definen el piso
 
 ttl:

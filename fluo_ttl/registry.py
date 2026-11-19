@@ -1,6 +1,7 @@
 """Registro (manifiesto) de datos: recorre <raiz>/<genotipo>/**/ y deja UNA tabla con cada registro, su umbral TTL y
 si entra al analisis o se excluye (con el motivo). El nombre de la carpeta de primer nivel es el genotipo."""
 import os
+import re
 import glob
 import numpy as np
 import pandas as pd
@@ -9,14 +10,21 @@ from . import signal as sg
 COLUMNAS = ["genotipo", "registro", "carpeta", "abf", "roi_csv", "deriva_csv", "frames", "pulsos", "umbral_ttl", "incluido", "motivo"]
 
 
+def _numero_registro(rc, carpeta):
+    """Numero del registro a partir del nombre del archivo de ROI. Acepta <fecha>_<n>_Stack_ROI_Results.csv y
+    <fecha>_<n>_ROI_ROI_Results.csv; si no hay numero, usa el nombre de la carpeta de la muestra."""
+    m = re.search(r"_(\d+)(?:_|$)", os.path.basename(rc))
+    return int(m.group(1)) if m else os.path.basename(carpeta)
+
+
 def escanear(raiz, cfg):
     filas = []
     ttl = cfg["ttl"]
     for geno in cfg["genotipos"]:
-        patron = os.path.join(raiz, geno, "**", "rois_ij", "*_Stack_ROI_Results.csv")
+        patron = os.path.join(raiz, geno, "**", "rois_ij", "*_ROI_Results.csv")
         for rc in sorted(glob.glob(patron, recursive=True)):
             carpeta = os.path.dirname(os.path.dirname(rc))
-            reg = int(os.path.basename(rc).split("_")[1])
+            reg = _numero_registro(rc, carpeta)
             abfs = glob.glob(os.path.join(carpeta, "*.abf"))
             deriva = glob.glob(os.path.join(carpeta, "limpieza_ij", "*drift_shifts_ij.csv"))
             fila = dict(genotipo=geno, registro=reg, carpeta=os.path.relpath(carpeta, raiz), abf="", roi_csv=os.path.relpath(rc, raiz),

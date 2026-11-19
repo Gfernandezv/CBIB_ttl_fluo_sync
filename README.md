@@ -19,7 +19,7 @@ La carpeta de primer nivel es el **genotipo** (`Wt` es la referencia). Dentro, c
 <datos>/
 ├── Wt/Nov06/Nov062026_2/
 │   ├── 26n06000.abf                              # canal 0 = temperatura, canal 1 = TTL
-│   ├── rois_ij/Nov062026_2_Stack_ROI_Results.csv   # medición de macros/03_medicion.ijm
+│   ├── rois_ij/Nov062026_2_Stack_ROI_Results.csv   # medición de macros/03_medicion.ijm (también vale *_ROI_ROI_Results.csv)
 │   └── limpieza_ij/Nov062026_2_Stack_drift_shifts_ij.csv   # marca los frames de transición
 ├── 1236/…   1250/…   1257/…   1227/…   1243/…   1265/…
 ```
