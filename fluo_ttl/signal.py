@@ -43,3 +43,36 @@ def leer_roi(ruta):
 
 def leer_transicion(ruta, n):
     return pd.read_csv(ruta)["transition"].to_numpy().astype(bool)[:n]
+
+
+def diagnostico_pulsos(t, v, umbral, n_frames):
+    """Describe los pulsos TTL frente a los frames para decidir por que no coinciden.
+    Compara cada intervalo entre pulsos con el mediano y cada duracion con la mediana."""
+    on, off = pulsos(v, umbral)
+    n = len(on)
+    out = dict(pulsos=n, frames=int(n_frames), dif=n - int(n_frames), razon=round(n / max(n_frames, 1), 3))
+    if n < 3:
+        return {**out, "sugerencia": "casi sin pulsos: revisa el umbral o el canal TTL"}
+    dt = np.diff(t[on]); med = float(np.median(dt)); w = (t[off] - t[on])
+    rel = dt / med; raros = np.where((rel < 0.7) | (rel > 1.3))[0]
+    out.update(intervalo_mediano_s=round(med, 4), duracion_mediana_s=round(float(np.median(w)), 4),
+               primer_intervalo=round(float(rel[0]), 2), ultimo_intervalo=round(float(rel[-1]), 2),
+               n_intervalos_raros=int(len(raros)), posiciones_raras=",".join(str(i) for i in raros[:8]),
+               pulsos_cortos=int((w < 0.5 * np.median(w)).sum()))
+    d = out["dif"]
+    if abs(out["razon"] - 2) < 0.1:
+        s = "pulsos ~ 2x frames: cada frame puede generar 2 pulsos, o el stack tiene la mitad de los frames"
+    elif d > 1 and rel[0] < 0.7 and len(raros) <= 2:
+        s = "pulso(s) extra al INICIO (intervalo inicial corto)"
+    elif d > 1 and rel[-1] < 0.7 and len(raros) <= 2:
+        s = "pulso(s) extra al FINAL (intervalo final corto)"
+    elif d > 1 and len(raros) == 0:
+        s = "cadencia regular: el abf tiene mas pulsos que el stack (stack recortado o grabacion mas larga)"
+    elif d > 1 and len(raros) > 2:
+        s = "intervalos irregulares en medio: posibles pulsos espurios o pausas"
+    elif d < -1:
+        s = "faltan pulsos: el umbral puede ser demasiado alto"
+    else:
+        s = "dentro de la tolerancia"
+    out["sugerencia"] = s
+    return out

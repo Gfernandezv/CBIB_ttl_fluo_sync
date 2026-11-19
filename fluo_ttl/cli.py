@@ -50,6 +50,13 @@ def cmd_scan(a):
         _sin_registros(reg, a.datos, cfg)
     print(reg[["genotipo", "registro", "frames", "pulsos", "umbral_ttl", "incluido", "motivo"]].to_string(index=False))
     print(f"\n{reg.incluido.sum()} incluidos, {(~reg.incluido).sum()} excluidos -> {a.salida}/registros.csv")
+    if a.detalle:
+        det = registry.detalle_pulsos(reg, a.datos, cfg); det.to_csv(os.path.join(a.salida, "pulsos_detalle.csv"), index=False)
+        pd.set_option("display.width", 250); pd.set_option("display.max_colwidth", 90)
+        print("\nDiagnostico de pulsos TTL (registros con diferencia > 1):")
+        x = det[det.dif.abs() > 1]
+        print(x[["genotipo", "registro", "pulsos", "frames", "dif", "primer_intervalo", "ultimo_intervalo", "n_intervalos_raros", "sugerencia"]].to_string(index=False) if len(x) else "  todos coinciden")
+        print(f"-> {a.salida}/pulsos_detalle.csv")
 
 
 def ejecutar(raiz, cfg, out, repo_dir=REPO):
@@ -135,7 +142,9 @@ def main(argv=None):
         q.add_argument("datos", help="carpeta raiz: <datos>/<genotipo>/**/{abf, rois_ij, limpieza_ij}")
         q.add_argument("-o", "--salida", default="resultados", help="carpeta de salida (default: resultados)")
         if nombre != "reproduce":
-            q.add_argument("-c", "--config", help="YAML con parametros que sobreescriben configs/default.yaml")
+            q.add_argument("-c", "--config", help="YAML con parametros que sobreescriben fluo_ttl/default.yaml")
+        if nombre == "scan":
+            q.add_argument("--detalle", action="store_true", help="diagnostico de pulsos TTL (intervalos, pulsos extra al inicio/final)")
     a = p.parse_args(argv); a.fn(a)
 
 

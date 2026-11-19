@@ -45,3 +45,13 @@ def escanear(raiz, cfg):
                 fila["incluido"] = True
             filas.append(fila)
     return pd.DataFrame(filas, columns=COLUMNAS)
+
+
+def detalle_pulsos(registro, raiz, cfg):
+    """Tabla de diagnostico de pulsos TTL por registro (con abf), para entender las exclusiones."""
+    ttl = cfg["ttl"]; filas = []
+    for _, f in registro[registro.abf != ""].iterrows():
+        t, _, v = sg.leer_abf(os.path.join(raiz, f["abf"]), ttl["canal_temperatura"], ttl["canal_ttl"])
+        d = sg.diagnostico_pulsos(t, v, f["umbral_ttl"], int(f["frames"]))
+        filas.append(dict(genotipo=f["genotipo"], registro=f["registro"], umbral_ttl=f["umbral_ttl"], incluido=f["incluido"], **d))
+    return pd.DataFrame(filas)
