@@ -24,8 +24,30 @@ def _scan(raiz, cfg, out):
     return reg
 
 
+def _sin_registros(reg, raiz, cfg):
+    """Mensaje claro cuando el escaneo no deja nada que analizar (en vez de fallar mas adelante)."""
+    if len(reg) == 0:
+        sub = sorted(d for d in os.listdir(raiz) if os.path.isdir(os.path.join(raiz, d))) if os.path.isdir(raiz) else []
+        extra = [d for d in sub if d not in cfg["genotipos"]]
+        msg = [f"No se encontro ningun registro en: {raiz}",
+               "Se busca  <datos>/<genotipo>/**/rois_ij/*_ROI_Results.csv  junto a un .abf y limpieza_ij/*drift_shifts_ij.csv.",
+               f"Genotipos buscados (configs): {', '.join(cfg['genotipos'])}"]
+        if not os.path.isdir(raiz):
+            msg.append("La carpeta no existe: revisa la ruta (entre comillas si tiene espacios).")
+        elif extra:
+            msg.append("Carpetas dentro de la ruta que NO son genotipos conocidos: " + ", ".join(extra[:15]))
+            msg.append("Si una de ellas contiene los genotipos, usa esa como carpeta de datos; si son genotipos nuevos, agregalos con 'genotipos:' en un YAML (-c).")
+        else:
+            msg.append("La carpeta no contiene subcarpetas de genotipo.")
+        sys.exit("\n".join(msg))
+    if not reg.incluido.any():
+        sys.exit("Hay %d registros pero ninguno entra al analisis:\n%s" % (len(reg), reg.groupby("motivo").size().to_string()))
+
+
 def cmd_scan(a):
     cfg = cfgmod.cargar(a.config); reg = _scan(a.datos, cfg, a.salida)
+    if len(reg) == 0:
+        _sin_registros(reg, a.datos, cfg)
     print(reg[["genotipo", "registro", "frames", "pulsos", "umbral_ttl", "incluido", "motivo"]].to_string(index=False))
     print(f"\n{reg.incluido.sum()} incluidos, {(~reg.incluido).sum()} excluidos -> {a.salida}/registros.csv")
 
@@ -33,6 +55,7 @@ def cmd_scan(a):
 def ejecutar(raiz, cfg, out, repo_dir=REPO):
     """Corre todo el analisis; deja tablas, figuras y provenance.json en `out`."""
     reg = _scan(raiz, cfg, out)
+    _sin_registros(reg, raiz, cfg)
     figs = os.path.join(out, "figuras"); os.makedirs(figs, exist_ok=True)
     infos, rois, trig, subs, res, trazas = [], [], [], [], {}, {}
     bins = None
