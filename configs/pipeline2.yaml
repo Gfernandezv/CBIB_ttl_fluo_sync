@@ -1,0 +1,6 @@
+# Tanda antigua (pipeline2, octubre 2025): sin Wt, con 2-4 pulsos TTL de mas en algunos registros.
+# Umbrales P1/P99 tomados de Wt de la corrida de noviembre 2026 (condiciones de adquisicion distintas: usar con cautela).
+ttl:
+  tolerancia_pulsos: 4
+  alineacion: inicio
+umbrales_fijos: {P1: -17.45, P99: 2.47}

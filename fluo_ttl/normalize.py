@@ -22,7 +22,8 @@ class Registro:
         self.t, self.T = sg.temperatura_por_frame(t, T, v, fila["umbral_ttl"], len(F), cfg["ttl"].get("alineacion", "inicio"))
         self.n = len(self.T); self.F = F[: self.n]
         self.transicion = sg.leer_transicion(p("deriva_csv"), self.n)
-        self.genotipo, self.registro = fila["genotipo"], int(fila["registro"])
+        self.genotipo = fila["genotipo"]
+        self.registro = int(fila["registro"]) if str(fila["registro"]).isdigit() else str(fila["registro"])
         self.cfg = cfg
         nf = cfg["normalizacion"]["frames_f0"]
         self.F0 = self.F[:nf].mean(0); self.R = self.F / self.F0

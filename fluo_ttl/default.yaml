@@ -43,3 +43,6 @@ subida_previa:                  # forma de la subida de F antes de calentar
   margen_inicio_C: 1.0
   min_frames: 60
   umbral_pendiente_pct_s: 0.02  # registros que "suben" (para la figura)
+
+# Si una tanda no trae la referencia, fija aqui P1/P99 de otra corrida (se guardan en config_usada.yaml). Vacio = se calculan con la referencia.
+umbrales_fijos: {}

@@ -80,10 +80,14 @@ def ejecutar(raiz, cfg, out, repo_dir=REPO):
             subs.append(fila); trazas[(f.genotipo, f.registro)] = tr
         print(f"  {f.genotipo} {f.registro}: {info['rois']} ROIs, D mediana {info['D_mediana']}")
     por_reg = pd.DataFrame(infos); por_roi = pd.concat(rois, ignore_index=True); sub = pd.DataFrame(subs)
-    ref = cfg["referencia"]; d_ref = por_roi[por_roi.genotipo == ref].D.dropna()
-    if len(d_ref) < 20:
-        raise SystemExit(f"Hay muy pocos ROIs de la referencia '{ref}' para fijar umbrales.")
-    p1, p99 = np.percentile(d_ref, [1, 99])
+    ref = cfg["referencia"]; d_ref = por_roi[por_roi.genotipo == ref].D.dropna(); fijos = cfg.get("umbrales_fijos") or {}
+    if fijos:
+        p1, p99 = float(fijos["P1"]), float(fijos["P99"])      # umbrales de otra corrida (se anota en config_usada.yaml)
+    elif len(d_ref) < 20:
+        raise SystemExit(f"Hay muy pocos ROIs de la referencia '{ref}' para fijar umbrales.\n"
+                         "Si esta tanda no trae la referencia, fija los de otra corrida en un YAML:  umbrales_fijos: {P1: -17.45, P99: 2.47}")
+    else:
+        p1, p99 = np.percentile(d_ref, [1, 99])
     filas = []
     for g, d in por_roi.groupby("genotipo"):
         x = d.D.dropna()
